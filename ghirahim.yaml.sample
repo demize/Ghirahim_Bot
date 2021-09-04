@@ -1,0 +1,3 @@
+ghirahim:
+  username: your_username
+  password: oauth:your_oauth_token # MUST start with "oauth:"

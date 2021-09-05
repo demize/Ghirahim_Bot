@@ -4,9 +4,10 @@ This bot is under active development. Please check back later.
 
 ## Requirements
 
-The following packages are required, and can be installed through pip:
+This bot requires Python 3.10 or newer. The following packages are also required, and can be installed through pip:
 
 - irc
 - pyyaml
+- redis
 
-You can install these in one line with `pip install irc pyyaml`.
+You can install these in one line with `pip install -r requirements.txt`.

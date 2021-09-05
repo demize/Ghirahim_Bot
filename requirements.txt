@@ -1,0 +1,12 @@
+irc==19.0.1
+jaraco.classes==3.2.1
+jaraco.collections==3.4.0
+jaraco.functools==3.3.0
+jaraco.logging==3.1.0
+jaraco.stream==3.0.2
+jaraco.text==3.5.1
+more-itertools==8.9.0
+pytz==2021.1
+PyYAML==5.4.1
+redis==3.5.3
+tempora==4.1.1

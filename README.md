@@ -9,5 +9,6 @@ This bot requires Python 3.10 or newer. The following packages are also required
 - irc
 - pyyaml
 - redis
+- urlextract
 
 You can install these in one line with `pip install -r requirements.txt`.

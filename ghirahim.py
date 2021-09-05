@@ -3,7 +3,10 @@
 from enum import Enum
 from functools import total_ordering
 import irc.bot, irc.connection
+import re
 import ssl
+from urlextract import URLExtract
+import urllib.parse
 import yaml
 
 @total_ordering
@@ -29,16 +32,29 @@ class UserRole(Enum):
 
 class GhirahimBot(irc.bot.SingleServerIRCBot):
     def __init__(self):
+        # Load the config
         with open('ghirahim.yaml', 'r') as f:
             config = yaml.load(f, Loader=yaml.BaseLoader)
         self.username = config["ghirahim"]["username"]
         self.password = config["ghirahim"]["password"]
 
+        # Load the URLExtract engine and tell it to use @ as a left stop char
+        self.extractor = URLExtract()
+        self.extractor.update()
+        stop_chars = self.extractor.get_stop_chars_left().copy()
+        stop_chars.add("@")
+        self.extractor.set_stop_chars_left(stop_chars)
+
+        # Set up a regex we'll need later
+        self.urlregex = re.compile(r"^[a-zA-Z0-9]+://")
+
+        # Connect to Twitch
         server = "irc.chat.twitch.tv"
         port = 6697
         factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
         print(f'Connecting to {server} on {port} as {self.username} with SSL...')
-        irc.bot.SingleServerIRCBot.__init__(self, [(server, port, self.password)], self.username, self.username, connect_factory=factory)
+        irc.bot.SingleServerIRCBot.__init__(self, [(server, port, self.password)], 
+                                            self.username, self.username, connect_factory=factory)
 
     def on_welcome(self, c, e):
         print(f'Connected. Joining #{self.username}.')
@@ -59,6 +75,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         Returns:
             UserRole: The highest role the user has.
         """
+
         role = UserRole.USER
         if badges is None:
             return role
@@ -77,15 +94,35 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                 role = new
         return role
 
+    def extract_urls(self, message) -> set:
+        """Finds the all domains in a given message.
+
+        Args:
+            message: The message to extract domains from.
+
+        Returns:
+            set: The set containing all the extracted domains.
+        """
+
+        urls = self.extractor.find_urls(message)
+        domains = set()
+        for url in urls:
+            if(self.urlregex.match(url) is None):
+                url = "//" + url
+            domains.add(urllib.parse.urlparse(url).netloc)
+        return domains
+
     def on_pubmsg(self, c, e):
         # Extract the user's role, display name, and the message ID
         role = GhirahimBot.parse_badges(next(tag["value"] for tag in e.tags if tag["key"] == "badges"))
         display_name = next(tag["value"] for tag in e.tags if tag["key"] == "display-name")
         msg_id = next(tag["value"] for tag in e.tags if tag["key"] == "id")
+        domains = self.extract_urls(" ".join(e.arguments))
         # Print basic information about the message; useful during development
-        print(f'Received message from {display_name} ({role}) with ID {msg_id}')
-        # Delete the message indiscriminately
-        c.privmsg(e.target, f'/delete {msg_id}')
+        print(f'Received message from {display_name} ({role}) with ID {msg_id} and links to the following domains: {domains}')
+        # Delete the message if it has any URL in it
+        if domains:
+            c.privmsg(e.target, f'/delete {msg_id}')
 
 
 def main():

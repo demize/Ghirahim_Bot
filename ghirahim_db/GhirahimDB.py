@@ -71,7 +71,7 @@ class UserRole(Enum):
                 return None
 
 class Channel():
-    def __init__(self, name: str, slash: bool, userlevel: UserRole, reply: str, allow_list: set):
+    def __init__(self, name: str, slash: bool, userlevel: UserRole, reply: str, allow_list: list):
         """Initializes a channel with the given options.
         """
         self.name = name
@@ -79,6 +79,24 @@ class Channel():
         self.userlevel = userlevel
         self.reply = reply
         self.allow_list = allow_list
+
+    @classmethod
+    def fromDefaults(cls, name: str):
+        """Returns a new channel with "safe" default settings.
+        These settings require a slash in order to count a URL, allow VIPs and higher to post links,
+        use the default reply, and have no links in the allow list.
+
+        Args: 
+            name: The name of the channel you're creating.
+
+        Returns:
+            Channel: A Channel with the supplied name and the default settings.
+        """
+        return cls(name,
+                   slash=True,
+                   userlevel=UserRole.VIP,
+                   reply="default",
+                   allow_list=list())
 
     @classmethod
     def fromDict(cls, fromDict: dict):
@@ -145,7 +163,8 @@ class GhirahimDB:
         channel = self._getChannelRedis(name)
         if(channel is None):
             channel = self._getChannelMongo(name)
-            self._setChannelRedis(channel)
+            if(channel is not None):
+                self._setChannelRedis(channel)
         return channel
 
     def _setChannelRedis(self, channel: Channel):
@@ -172,6 +191,12 @@ class GhirahimDB:
         """
         self._setChannelRedis(channel)
         self._setChannelMongo(channel)
+    
+    def delChannel(self, channel: Channel | str):
+        if isinstance(channel, Channel):
+            channel = channel.name
+        self.redis.delete("channel:" + channel + ":config", "channel:" + channel + ":allowlist")
+        self.mongo.get_collection("channels").delete_one({"name": channel})
 
     def issuePermit(self, channel: Channel, username: str):
         """Adds a permit to Redis for the specified user in the specified channel.

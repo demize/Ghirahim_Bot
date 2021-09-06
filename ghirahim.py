@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-from enum import Enum
-from functools import total_ordering
 import irc.bot, irc.connection
 import re
 import ssl
@@ -9,34 +7,18 @@ from urlextract import URLExtract
 import urllib.parse
 import yaml
 
-@total_ordering
-class UserRole(Enum):
-    """Represents a user's role in chat.
-    Implements ordering such that USER < SUBSCRIBER < VIP < MODERATOR < BROADCASTER.
-    """
-    USER = 0
-    SUBSCRIBER = 1
-    VIP = 2
-    MODERATOR = 3
-    BROADCASTER = 4
-
-    def __gt__(self, other) -> bool:
-        if(self.__class__ is other.__class__):
-            return self.value > other.value
-        return NotImplemented
-
-    def __eq__(self, other) -> bool:
-        if(self.__class__ is other.__class__):
-            return self.value == other.value
-        return False
+from ghirahim_db.GhirahimDB import GhirahimDB, UserRole
 
 class GhirahimBot(irc.bot.SingleServerIRCBot):
     def __init__(self):
         # Load the config
         with open('ghirahim.yaml', 'r') as f:
             config = yaml.load(f, Loader=yaml.BaseLoader)
-        self.username = config["ghirahim"]["username"]
-        self.password = config["ghirahim"]["password"]
+            self.username = config["ghirahim"]["username"]
+            self.password = config["ghirahim"]["password"]
+            # Set up the DB
+            self.db = GhirahimDB(config["mongo"]["connect_string"], 
+                                 config["redis"]["host"], config["redis"]["port"], config["redis"]["db"])
 
         # Load the URLExtract engine and tell it to use @ as a left stop char
         self.extractor = URLExtract()
@@ -53,7 +35,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         port = 6697
         factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
         print(f'Connecting to {server} on {port} as {self.username} with SSL...')
-        irc.bot.SingleServerIRCBot.__init__(self, [(server, port, self.password)], 
+        irc.bot.SingleServerIRCBot.__init__(self, [(server, port, self.password)],
                                             self.username, self.username, connect_factory=factory)
 
     def on_welcome(self, c, e):
@@ -112,7 +94,21 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             domains.add(urllib.parse.urlparse(url).netloc)
         return domains
 
+    def pubmsg_ownchannel(self, c, e):
+        # There's only two commands to worry about here, nothing else matters
+        message = " ".join(e.arguments)
+        match message.lower().strip():
+            case "!join":
+                sourceUser = e.source.nick
+                print(f"Would join {sourceUser} if joining was implemented")
+            case "!leave":
+                sourceUser = e.source.nick
+                print(f"Would part {sourceUser} if joining was implemented")
+
     def on_pubmsg(self, c, e):
+        # Check if this message is in our own channel or another channel, and parse it accordingly
+        if(e.target == "#" + self.username):
+            return self.pubmsg_ownchannel(c, e)
         # Extract the user's role, display name, and the message ID
         role = GhirahimBot.parse_badges(next(tag["value"] for tag in e.tags if tag["key"] == "badges"))
         display_name = next(tag["value"] for tag in e.tags if tag["key"] == "display-name")

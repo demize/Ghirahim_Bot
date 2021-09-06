@@ -173,3 +173,12 @@ class GhirahimDB:
         self._setChannelRedis(channel)
         self._setChannelMongo(channel)
 
+    def issuePermit(self, channel: Channel, username: str):
+        """Adds a permit to Redis for the specified user in the specified channel.
+        """
+        self.redis.setex("permit:" + channel.name + ":" + username, 300, "Yes")
+
+    def checkPermit(self, channel: Channel, username: str) -> bool:
+        """Checks Redis to see if the specified user has a valid permit in the specified channel.
+        """
+        return self.redis.get("permit:" + channel.name + ":" + username) is not None

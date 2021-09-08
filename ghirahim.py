@@ -199,6 +199,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             # Permit takes only one user at once
             case "!permit":
                 user = args.split(" ")[0]
+                if user[0] == "@":
+                    user = user[1:]
                 self.db.issuePermit(chan, user)
                 self.send_privmsg(
                     c, e.target, f'{user} may post any link for the next 5 minutes.')

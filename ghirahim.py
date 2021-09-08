@@ -55,6 +55,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         print("Connected.")
         # The tags cap is necessary so we can get information about messages, including user role and message ID.
         c.cap('REQ', ':twitch.tv/tags')
+        c.cap('REQ', ':twitch.tv/commands')
         # Join the bot's own channel
         c.join('#' + self.username)
         # Join every other channel
@@ -258,6 +259,15 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         if e.target[1:] == self.username:
             return self.pubmsg_ownchannel(c, e)
         self.pubmsg_otherchannel(c, e)
+
+    def on_pubnotice(self, c, e):
+        print(e)
+
+    def on_privnotice(self, c, e):
+        print(e)
+
+    def on_notice(self, c, e):
+        print(e)
 
 def main():
     bot = GhirahimBot()

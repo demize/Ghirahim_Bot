@@ -17,6 +17,7 @@ Sample channel:
 }
 '''
 
+
 @total_ordering
 class UserRole(Enum):
     """Represents a user's role in chat.
@@ -52,7 +53,7 @@ class UserRole(Enum):
                 return "BROADCASTER"
             case _:
                 return "UNKNOWN"
-    
+
     @staticmethod
     def fromStr(string: str):
         """Returns a UserRole based on the given string.
@@ -71,6 +72,7 @@ class UserRole(Enum):
                 return UserRole.BROADCASTER
             case _:
                 return None
+
 
 class Channel():
     def __init__(self, name: str, slash: bool, subdomains: bool, userlevel: UserRole, reply: str, allow_list: list):
@@ -113,11 +115,11 @@ class Channel():
                 entry = str(entry, 'utf-8')
             allow_list.append(entry)
 
-        return cls(fromDict["name"], 
+        return cls(fromDict["name"],
                    fromDict["slash"],
                    fromDict["subdomains"],
-                   UserRole.fromStr(fromDict["userlevel"]), 
-                   fromDict["reply"], 
+                   UserRole.fromStr(fromDict["userlevel"]),
+                   fromDict["reply"],
                    allow_list)
 
     def toDict(self) -> dict:
@@ -131,6 +133,7 @@ class Channel():
             "reply": self.reply,
             "allow_list": list(self.allow_list),
         }
+
 
 class GhirahimDB:
     def __init__(self, mongoConnectStr: str, redisHost: str, redisPort: int, redisDb: int) -> None:
@@ -147,9 +150,11 @@ class GhirahimDB:
         redisName = "channel:" + name
         if self.redis.exists(redisName + ":config", redisName + ":allowlist") < 2:
             return None
-        slash = self.redis.hget(redisName + ":config", "slash")==b"True"
-        subdomains = self.redis.hget(redisName + ":config", "subdomains")==b"True"
-        userlevel = UserRole.fromStr(str(self.redis.hget(redisName + ":config", "userlevel"), 'utf-8').upper())
+        slash = self.redis.hget(redisName + ":config", "slash") == b"True"
+        subdomains = self.redis.hget(
+            redisName + ":config", "subdomains") == b"True"
+        userlevel = UserRole.fromStr(
+            str(self.redis.hget(redisName + ":config", "userlevel"), 'utf-8').upper())
         reply = str(self.redis.hget(redisName + ":config", "reply"), 'utf-8')
         allow_list = list()
         for entry in self.redis.smembers(redisName + ":allowlist"):
@@ -192,24 +197,27 @@ class GhirahimDB:
         self.redis.expire(redisName + ":allowlist", 1800)
 
     def _setChannelMongo(self, channel: Channel):
-        self.mongo.get_collection("channels").replace_one({"name": channel.name}, channel.toDict(), upsert=True)
+        self.mongo.get_collection("channels").replace_one(
+            {"name": channel.name}, channel.toDict(), upsert=True)
 
     def setChannel(self, channel: Channel):
         """Inserts or updates a channel in both MongoDB and Redis.
         """
         self._setChannelRedis(channel)
         self._setChannelMongo(channel)
-    
+
     def delChannel(self, channel: Channel | str):
         if isinstance(channel, Channel):
             channel = channel.name
-        self.redis.delete("channel:" + channel + ":config", "channel:" + channel + ":allowlist")
+        self.redis.delete("channel:" + channel + ":config",
+                          "channel:" + channel + ":allowlist")
         self.mongo.get_collection("channels").delete_one({"name": channel})
 
     def issuePermit(self, channel: Channel, username: str):
         """Adds a permit to Redis for the specified user in the specified channel.
         """
-        self.redis.setex("permit:" + channel.name + ":" + username, datetime.timedelta(minutes=5), "Yes")
+        self.redis.setex("permit:" + channel.name + ":" +
+                         username, datetime.timedelta(minutes=5), "Yes")
 
     def checkPermit(self, channel: Channel, username: str) -> bool:
         """Checks Redis to see if the specified user has a valid permit in the specified channel.

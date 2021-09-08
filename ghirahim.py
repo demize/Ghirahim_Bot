@@ -3,7 +3,8 @@
 from dataclasses import dataclass, field
 import datetime
 from functools import total_ordering
-import irc.bot, irc.connection
+import irc.bot
+import irc.connection
 import numpy
 import re
 import ssl
@@ -13,6 +14,7 @@ import yaml
 
 from ghirahim_db.GhirahimDB import Channel, GhirahimDB, UserRole
 
+
 class GhirahimBot(irc.bot.SingleServerIRCBot):
     def __init__(self):
         # Load the config
@@ -21,7 +23,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             self.username = config["ghirahim"]["username"]
             self.password = config["ghirahim"]["password"]
             # Set up the DB
-            self.db = GhirahimDB(config["mongo"]["connect_string"], 
+            self.db = GhirahimDB(config["mongo"]["connect_string"],
                                  config["redis"]["host"], config["redis"]["port"], config["redis"]["db"])
 
         # Load the URLExtract engine and tell it to use @ as a left stop char
@@ -38,12 +40,14 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         server = "irc.chat.twitch.tv"
         port = 6697
         factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
-        print(f'Connecting to {server} on {port} as {self.username} with SSL...')
+        print(
+            f'Connecting to {server} on {port} as {self.username} with SSL...')
         irc.bot.SingleServerIRCBot.__init__(self, [(server, port, self.password)],
                                             self.username, self.username, connect_factory=factory)
 
         # Schedule twice daily updates of the TLD list
-        self.connection.reactor.scheduler.execute_every(period=datetime.timedelta(hours=12), func=self.extractor.update)
+        self.connection.reactor.scheduler.execute_every(
+            period=datetime.timedelta(hours=12), func=self.extractor.update)
 
         # Set the rate limit. This should probably go in the config file, but it's fine here for now.
         self.connection.set_rate_limit(80/30)
@@ -71,9 +75,11 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         c.join('#' + self.username)
         c.join("#nightbot")
         # Join every other channel
-        c.reactor.scheduler.execute_after(delay=datetime.timedelta(seconds=5), func=self.check_channels)
+        c.reactor.scheduler.execute_after(
+            delay=datetime.timedelta(seconds=5), func=self.check_channels)
         # Check hourly that we're in all the channels we need to be
-        c.reactor.scheduler.execute_every(period=datetime.timedelta(hours=1), func=self.check_channels)
+        c.reactor.scheduler.execute_every(
+            period=datetime.timedelta(hours=1), func=self.check_channels)
 
     def on_join(self, c, e):
         if e.source.nick == self.username:
@@ -147,18 +153,23 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         message = " ".join(e.arguments)
         match message.lower().strip():
             case "!join":
-                if(not self.db.getChannel(e.source.nick)): # Only create the channel if it doesn't exist
+                # Only create the channel if it doesn't exist
+                if(not self.db.getChannel(e.source.nick)):
                     newChan = Channel.fromDefaults(e.source.nick)
                     self.db.setChannel(newChan)
                     c.join('#' + newChan.name)
-                    c.privmsg(e.target, f"Joined #{newChan.name} with default settings.")
-                elif(e.source.nick not in self.joined_channels): # If it does exist and we're not in it, join it
+                    c.privmsg(
+                        e.target, f"Joined #{newChan.name} with default settings.")
+                # If it does exist and we're not in it, join it
+                elif(e.source.nick not in self.joined_channels):
                     c.join('#' + e.source.nick)
             case "!leave":
-                if(self.db.getChannel(e.source.nick)): # Only delete the channel from the DB if it exists
+                # Only delete the channel from the DB if it exists
+                if(self.db.getChannel(e.source.nick)):
                     self.db.delChannel(e.source.nick)
                     c.part('#' + e.source.nick)
-                elif(e.source.nick in self.joined_channels): # If it doesn't exist, but we're in it, part it
+                # If it doesn't exist, but we're in it, part it
+                elif(e.source.nick in self.joined_channels):
                     c.part('#' + e.source.nick)
 
     def get_reply(self, chan: Channel, user: str) -> str | None:
@@ -177,20 +188,23 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         # All commands need at least two parts, the command and the args
         if len(earguments.split(" ")) < 2:
             return
-        (command, args) = (earguments.split(" ", 1)[0], earguments.split(" ", 1)[1])
+        command = earguments.split(" ", 1)[0]
+        args = earguments.split(" ", 1)[1]
         match command.lower():
             # Permit takes only one user at once
             case "!permit":
                 user = args.split(" ")[0]
                 self.db.issuePermit(chan, user)
-                c.privmsg(e.target, f'{user} may post any link for the next 5 minutes.')
+                c.privmsg(
+                    e.target, f'{user} may post any link for the next 5 minutes.')
             case "!links":
                 # List only needs one part, but the others need at least two parts, the subcommand and its arguments
                 if len(args.split(" ")) < 2:
                     subcommand = args
                     subargs = None
                 else:
-                    subcommand, subargs = (args.split(" ", 1)[0], args.split(" ", 1)[1])
+                    subcommand = args.split(" ", 1)[0]
+                    subargs = args.split(" ", 1)[1]
                 match subcommand.lower():
                     case "allow":
                         if subargs is not None:
@@ -206,7 +220,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                             self.db.setChannel(chan)
                     case "list":
                         current = ", ".join(chan.allow_list)
-                        c.privmsg(e.target, f"Current allow list for {chan.name}: {current}")
+                        c.privmsg(
+                            e.target, f"Current allow list for {chan.name}: {current}")
                     case "slash":
                         if subargs.strip() in ["true", "yes"]:
                             chan.slash = True
@@ -234,7 +249,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                         if new_reply is None:
                             c.privmsg(e.target, "Replies disabled.")
                         else:
-                            c.privmsg(e.target, f'New reply will be: "{new_reply}"')
+                            c.privmsg(
+                                e.target, f'New reply will be: "{new_reply}"')
                             self.db.setChannel(chan)
 
     def pubmsg_otherchannel(self, c, e):
@@ -245,19 +261,22 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             return
 
         # Extract the user's role
-        role = GhirahimBot.parse_badges(next(tag["value"] for tag in e.tags if tag["key"] == "badges"))
+        role = GhirahimBot.parse_badges(
+            next(tag["value"] for tag in e.tags if tag["key"] == "badges"))
 
         # Mods and up are always immune, and are the only ones allowed to use commands
         if role >= UserRole.MODERATOR:
             if e.arguments[0][0] == '!':
                 self.chat_command(c, e, chan)
         elif role >= chan.userlevel:
-            pass # If the user's not a mod, but they're allowed to send links, ignore their message
+            pass  # If the user's not a mod, but they're allowed to send links, ignore their message
         else:
             # Extract the user's display name and the message ID
-            display_name = next(tag["value"] for tag in e.tags if tag["key"] == "display-name")
+            display_name = next(tag["value"]
+                                for tag in e.tags if tag["key"] == "display-name")
             msg_id = next(tag["value"] for tag in e.tags if tag["key"] == "id")
-            domains = self.extract_urls(" ".join(e.arguments), chan.slash, chan.subdomains, chan.allow_list)
+            domains = self.extract_urls(
+                " ".join(e.arguments), chan.slash, chan.subdomains, chan.allow_list)
             # Delete the message if it has any non-allowed URL in it
             if domains:
                 c.privmsg(e.target, f'/delete {msg_id}')
@@ -280,9 +299,11 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
     def on_notice(self, c, e):
         print(e)
 
+
 def main():
     bot = GhirahimBot()
     bot.start()
+
 
 if __name__ == "__main__":
     main()

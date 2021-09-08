@@ -219,35 +219,46 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                                 if domain not in chan.allow_list:
                                     chan.allow_list.append(domain)
                             self.db.setChannel(chan)
+                            current = ", ".join(chan.allow_list)
+                            self.send_privmsg(
+                                c, e.target, f"New allow list for {chan.name}: {current}")
                     case "deny":
                         if subargs is not None:
                             for domain in subargs.split(" "):
                                 while domain in chan.allow_list:
                                     chan.allow_list.remove(domain)
                             self.db.setChannel(chan)
+                            current = ", ".join(chan.allow_list)
+                            self.send_privmsg(
+                                c, e.target, f"New allow list for {chan.name}: {current}")
                     case "list":
                         current = ", ".join(chan.allow_list)
                         self.send_privmsg(
                             c, e.target, f"Current allow list for {chan.name}: {current}")
                     case "slash":
-                        if subargs.strip() in ["true", "yes"]:
+                        if subargs.strip() in ["true", "yes"] and not chan.slash:
                             chan.slash = True
                             self.db.setChannel(chan)
-                        elif subargs.strip() in ["false", "no"]:
+                            self.send_privmsg(c, e.target, f"Slashes now required in {chan.name}")
+                        elif subargs.strip() in ["false", "no"] and chan.slash:
                             chan.slash = True
                             self.db.setChannel(chan)
+                            self.send_privmsg(c, e.target, f"Slashes now ignored in {chan.name}")
                     case "subdomains":
-                        if subargs.strip() in ["true", "yes"]:
+                        if subargs.strip() in ["true", "yes"] and not chan.subdomains:
                             chan.subdomains = True
                             self.db.setChannel(chan)
+                            self.send_privmsg(c, e.target, f"Subdomain matching enabled in {chan.name}")
                         elif subargs.strip() in ["false", "no"]:
                             chan.subdomains = True
                             self.db.setChannel(chan)
+                            self.send_privmsg(c, e.target, f"Subdomain matching disabled in {chan.name}")
                     case "role":
                         role = UserRole.fromStr(subargs.strip())
-                        if role is not None:
+                        if role is not None and chan.userlevel != role:
                             chan.userlevel = role
                             self.db.setChannel(chan)
+                            self.send_privmsg(c, e.target, f"Allowed userlevel set to {role} in {chan.name}")
                     case "reply":
                         if not "__user__" in subargs:
                             subargs = "__user__, " + subargs

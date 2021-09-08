@@ -223,3 +223,9 @@ class GhirahimDB:
         """Checks Redis to see if the specified user has a valid permit in the specified channel.
         """
         return self.redis.get("permit:" + channel.name + ":" + username) is not None
+
+    def setChannelCooldown(self, channel: str):
+        self.redis.setex("cooldown:" + channel, datetime.timedelta(minutes=5), "Yes")
+
+    def checkChannelCooldown(self, channel: str) -> bool:
+        return self.redis.get("cooldown:" + channel) is not None

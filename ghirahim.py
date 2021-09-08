@@ -13,6 +13,7 @@ import urllib.parse
 import yaml
 
 from ghirahim_db.GhirahimDB import Channel, GhirahimDB, UserRole
+from ghirahim_utils import ignore_notices, cooldown_notices, leave_notices
 
 
 class GhirahimBot(irc.bot.SingleServerIRCBot):
@@ -54,6 +55,10 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
 
         # Set up the list of joined channels for later
         self.joined_channels = set()
+
+    def send_privmsg(self, c, target: str, message: str):
+        if not self.db.checkChannelCooldown(target[1:]):
+            c.privmsg(target, message)
 
     def check_channels(self):
         # Make sure we're in all the channels we're supposed to be, including our own
@@ -158,8 +163,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                     newChan = Channel.fromDefaults(e.source.nick)
                     self.db.setChannel(newChan)
                     c.join('#' + newChan.name)
-                    c.privmsg(
-                        e.target, f"Joined #{newChan.name} with default settings.")
+                    self.send_privmsg(
+                        c, e.target, f"Joined #{newChan.name} with default settings.")
                 # If it does exist and we're not in it, join it
                 elif(e.source.nick not in self.joined_channels):
                     c.join('#' + e.source.nick)
@@ -195,8 +200,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             case "!permit":
                 user = args.split(" ")[0]
                 self.db.issuePermit(chan, user)
-                c.privmsg(
-                    e.target, f'{user} may post any link for the next 5 minutes.')
+                self.send_privmsg(
+                    c, e.target, f'{user} may post any link for the next 5 minutes.')
             case "!links":
                 # List only needs one part, but the others need at least two parts, the subcommand and its arguments
                 if len(args.split(" ")) < 2:
@@ -220,8 +225,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                             self.db.setChannel(chan)
                     case "list":
                         current = ", ".join(chan.allow_list)
-                        c.privmsg(
-                            e.target, f"Current allow list for {chan.name}: {current}")
+                        self.send_privmsg(
+                            c, e.target, f"Current allow list for {chan.name}: {current}")
                     case "slash":
                         if subargs.strip() in ["true", "yes"]:
                             chan.slash = True
@@ -247,10 +252,10 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                         chan.reply = subargs
                         new_reply = self.get_reply(chan, e.source.nick)
                         if new_reply is None:
-                            c.privmsg(e.target, "Replies disabled.")
+                            self.send_privmsg(c, e.target, "Replies disabled.")
                         else:
-                            c.privmsg(
-                                e.target, f'New reply will be: "{new_reply}"')
+                            self.send_privmsg(
+                                c, e.target, f'New reply will be: "{new_reply}"')
                             self.db.setChannel(chan)
 
     def pubmsg_otherchannel(self, c, e):
@@ -279,10 +284,10 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                 " ".join(e.arguments), chan.slash, chan.subdomains, chan.allow_list)
             # Delete the message if it has any non-allowed URL in it
             if domains:
-                c.privmsg(e.target, f'/delete {msg_id}')
+                self.send_privmsg(c, e.target, f'/delete {msg_id}')
                 reply = self.get_reply(chan, e.source.nick)
                 if reply is not None:
-                    c.privmsg(e.target, reply)
+                    self.send_privmsg(c, e.target, reply)
 
     def on_pubmsg(self, c, e):
         # Check if this message is in our own channel or another channel, and parse it accordingly
@@ -291,13 +296,28 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         self.pubmsg_otherchannel(c, e)
 
     def on_pubnotice(self, c, e):
-        print(e)
+        notice_type = next(tag["value"]
+                           for tag in e.tags if tag["key"] == "msg-id")
+        if notice_type in ignore_notices:
+            # These notices are not relevant to bot functions
+            return
+        elif notice_type in cooldown_notices:
+            # Cooldown
+            print(f"Received {notice_type} in {e.target}; adding to cooldown")
+            self.db.setChannelCooldown(e.target[1:])
+        elif notice_type in leave_notices:
+            # These notices are a good indication we should leave
+            print(f"Received {notice_type} in {e.target}; leaving")
+            if(self.db.getChannel(e.target)):
+                self.db.delChannel(e.target)
+                c.part(e.target)
+        else:
+            print(f"Received unknown notice ({notice_type}) in {e.target}")
 
     def on_privnotice(self, c, e):
-        print(e)
-
-    def on_notice(self, c, e):
-        print(e)
+        notice_type = next(tag["value"]
+                           for tag in e.tags if tag["key"] == "msg-id")
+        print(f"Received unknown private notice ({notice_type}) in {e.target}")
 
 
 def main():

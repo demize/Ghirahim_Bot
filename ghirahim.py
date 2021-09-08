@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import datetime
 from functools import total_ordering
 import irc.bot, irc.connection
+import numpy
 import re
 import ssl
 from urlextract import URLExtract
@@ -50,6 +51,16 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         # Set up the list of joined channels for later
         self.joined_channels = set()
 
+    def check_channels(self):
+        # Make sure we're in all the channels we're supposed to be, including our own
+        channels = numpy.union1d(self.db.getChannels(), [self.username])
+        to_join = numpy.setdiff1d(list(channels), list(self.joined_channels))
+        for channel in to_join:
+            self.connection.join('#' + channel)
+        # Make sure we're not in any channels we're not supposed to be
+        to_part = numpy.setdiff1d(list(self.joined_channels), list(channels))
+        for channel in to_part:
+            self.connection.part('#' + channel)
 
     def on_welcome(self, c, e):
         print("Connected.")
@@ -58,11 +69,11 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         c.cap('REQ', ':twitch.tv/commands')
         # Join the bot's own channel
         c.join('#' + self.username)
+        c.join("#nightbot")
         # Join every other channel
-        channels = self.db.getChannels()
-        if channels is not None:
-            for channel in self.db.getChannels():
-                c.join('#' + channel)
+        c.reactor.scheduler.execute_after(delay=datetime.timedelta(seconds=5), func=self.check_channels)
+        # Check hourly that we're in all the channels we need to be
+        c.reactor.scheduler.execute_every(period=datetime.timedelta(hours=1), func=self.check_channels)
 
     def on_join(self, c, e):
         if e.source.nick == self.username:

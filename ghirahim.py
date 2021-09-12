@@ -5,9 +5,12 @@ import datetime
 from functools import total_ordering
 import irc.bot
 import irc.connection
+import logging
+import logging.handlers
 import numpy
 import re
 import ssl
+import sys
 from urlextract import URLExtract
 import urllib.parse
 import yaml
@@ -55,6 +58,37 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
 
         # Set up the list of joined channels for later
         self.joined_channels = set()
+
+        # Set up logging
+        # We need a formatter for both files (as well as the console, if enabled)
+        formatter = logging.Formatter('%(asctime)s - %(message)s')
+        formatter.formatTime = (lambda self, record: datetime.datetime.fromtimestamp(
+            self.created, datetime.timezone.utc).astimezone().isoformat())
+
+        # Each file needs its own handler. We'll limit each file to 100MB with two backups.
+        priv_handler = logging.handlers.RotatingFileHandler(
+            f'{config["ghirahim"]["log"]["logdir"]}/privnotice.log', maxBytes=1024 * 1024 * 100, backupCount=2, encoding='utf-8')
+        pub_handler = logging.handlers.RotatingFileHandler(
+            f'{config["ghirahim"]["log"]["logdir"]}/pubnotice.log', maxBytes=1024 * 1024 * 100, backupCount=2, encoding='utf-8')
+
+        # Assign the formatter to each handler
+        priv_handler.setFormatter(formatter)
+        pub_handler.setFormatter(formatter)
+
+        # Create the loggers, set the level to INFO, and assign the handler to each
+        self.priv_logger = logging.getLogger("ghirahim.privnotice")
+        self.pub_logger = logging.getLogger("ghirahim.pubnotice")
+        self.priv_logger.setLevel(logging.INFO)
+        self.pub_logger.setLevel(logging.INFO)
+        self.priv_logger.addHandler(priv_handler)
+        self.pub_logger.addHandler(pub_handler)
+
+        # Mostly for debugging, but also just nice to have sometimes
+        if config["ghirahim"]["log"]["console"]:
+            stdhandler = logging.StreamHandler(sys.stdout)
+            stdhandler.setFormatter(formatter)
+            self.pub_logger.addHandler(stdhandler)
+            self.priv_logger.addHandler(stdhandler)
 
     def send_privmsg(self, c, target: str, message: str):
         if not self.db.checkChannelCooldown(target[1:]):
@@ -236,40 +270,68 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                         self.send_privmsg(
                             c, e.target, f"Current allow list for {chan.name}: {current}")
                     case "slash":
-                        if subargs.strip() in ["true", "yes"] and not chan.slash:
-                            chan.slash = True
-                            self.db.setChannel(chan)
-                            self.send_privmsg(c, e.target, f"Slashes now required in {chan.name}")
-                        elif subargs.strip() in ["false", "no"] and chan.slash:
-                            chan.slash = True
-                            self.db.setChannel(chan)
-                            self.send_privmsg(c, e.target, f"Slashes now ignored in {chan.name}")
-                    case "subdomains":
-                        if subargs.strip() in ["true", "yes"] and not chan.subdomains:
-                            chan.subdomains = True
-                            self.db.setChannel(chan)
-                            self.send_privmsg(c, e.target, f"Subdomain matching enabled in {chan.name}")
-                        elif subargs.strip() in ["false", "no"]:
-                            chan.subdomains = True
-                            self.db.setChannel(chan)
-                            self.send_privmsg(c, e.target, f"Subdomain matching disabled in {chan.name}")
-                    case "role":
-                        role = UserRole.fromStr(subargs.strip())
-                        if role is not None and chan.userlevel != role:
-                            chan.userlevel = role
-                            self.db.setChannel(chan)
-                            self.send_privmsg(c, e.target, f"Allowed userlevel set to {role} in {chan.name}")
-                    case "reply":
-                        if not "__user__" in subargs:
-                            subargs = "__user__, " + subargs
-                        chan.reply = subargs
-                        new_reply = self.get_reply(chan, e.source.nick)
-                        if new_reply is None:
-                            self.send_privmsg(c, e.target, "Replies disabled.")
+                        if subargs is not None:
+                            if subargs.strip() in ["true", "yes"]:
+                                chan.slash = True
+                                self.db.setChannel(chan)
+                                self.send_privmsg(
+                                    c, e.target, f"Slashes now required in {chan.name}")
+                            elif subargs.strip() in ["false", "no"]:
+                                chan.slash = True
+                                self.db.setChannel(chan)
+                                self.send_privmsg(
+                                    c, e.target, f"Slashes now ignored in {chan.name}")
+                        elif chan.slash:
+                            self.send_privmsg(
+                                    c, e.target, f"Slashes currently required in {chan.name}")
                         else:
                             self.send_privmsg(
-                                c, e.target, f'New reply will be: "{new_reply}"')
-                            self.db.setChannel(chan)
+                                    c, e.target, f"Slashes currently NOT required in {chan.name}")
+                    case "subdomains":
+                        if subargs is not None:
+                            if subargs.strip() in ["true", "yes"]:
+                                chan.subdomains = True
+                                self.db.setChannel(chan)
+                                self.send_privmsg(
+                                    c, e.target, f"Subdomain matching enabled in {chan.name}")
+                            elif subargs.strip() in ["false", "no"]:
+                                chan.subdomains = True
+                                self.db.setChannel(chan)
+                                self.send_privmsg(
+                                    c, e.target, f"Subdomain matching disabled in {chan.name}")
+                        elif chan.subdomains:
+                            self.send_privmsg(
+                                    c, e.target, f"Subdomain matching currently enabled in {chan.name}")
+                        else:
+                            self.send_privmsg(
+                                    c, e.target, f"Subdomain matching currently disabled in {chan.name}")
+                    case "role":
+                        if subargs is not None:
+                            role = UserRole.fromStr(subargs.strip())
+                            if role is not None:
+                                chan.userlevel = role
+                                self.db.setChannel(chan)
+                                self.send_privmsg(
+                                    c, e.target, f"Allowed userlevel set to {role} in {chan.name}")
+                            else:
+                                self.send_privmsg(c, e.target, "Invalid role specified!")
+                        else:
+                            self.send_privmsg(
+                                    c, e.target, f"Allowed userlevel in {chan.name} is {chan.userlevel}")
+                    case "reply":
+                        if subargs is not None:
+                            if not "__user__" in subargs:
+                                subargs = "__user__, " + subargs
+                            chan.reply = subargs
+                            new_reply = self.get_reply(chan, e.source.nick)
+                            if new_reply is None:
+                                self.send_privmsg(c, e.target, "Replies disabled.")
+                            else:
+                                self.send_privmsg(
+                                    c, e.target, f'New reply will be: "{new_reply}"')
+                                self.db.setChannel(chan)
+                        else:
+                            self.send_privmsg(c, e.target, f"Current reply in {chan.name}: {self.get_reply(chan, e.source.nick)}")
 
     def pubmsg_otherchannel(self, c, e):
         # Check if we're supposed to be in the channel and leave if not
@@ -316,21 +378,25 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             return
         elif notice_type in cooldown_notices:
             # Cooldown
-            print(f"Received {notice_type} in {e.target}; adding to cooldown")
+            self.pub_logger.info(
+                f"Received {notice_type} in {e.target}; adding to cooldown")
             self.db.setChannelCooldown(e.target[1:])
         elif notice_type in leave_notices:
             # These notices are a good indication we should leave
-            print(f"Received {notice_type} in {e.target}; leaving")
+            self.pub_logger.info(
+                f"Received {notice_type} in {e.target}; leaving")
             if(self.db.getChannel(e.target)):
                 self.db.delChannel(e.target)
                 c.part(e.target)
         else:
-            print(f"Received unknown notice ({notice_type}) in {e.target}")
+            self.pub_logger.info(
+                f"Received unknown notice ({notice_type}) in {e.target}")
 
     def on_privnotice(self, c, e):
         notice_type = next(tag["value"]
                            for tag in e.tags if tag["key"] == "msg-id")
-        print(f"Received unknown private notice ({notice_type}) in {e.target}")
+        self.priv_logger(
+            f"Received unknown private notice ({notice_type}) in {e.target}")
 
 
 def main():

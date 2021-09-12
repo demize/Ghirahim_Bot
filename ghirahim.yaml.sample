@@ -1,6 +1,9 @@
 ghirahim:
   username: your_username
   password: oauth:your_oauth_token # MUST start with "oauth:"
+  log:
+    logdir: /var/log/ghirahim
+    console: true
 mongo:
   connect_string: connect_string # e.g. mongodb+srv://testusr:secret_password@localhost/GhirahimDB
 redis:

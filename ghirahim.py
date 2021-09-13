@@ -247,7 +247,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                     subcommand = args.split(" ", 1)[0]
                     subargs = args.split(" ", 1)[1]
                 match subcommand.lower():
-                    case "allow":
+                    case ("allow"|"add"):
                         if subargs is not None:
                             for domain in subargs.split(" "):
                                 if domain not in chan.allow_list:
@@ -256,7 +256,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                             current = ", ".join(chan.allow_list)
                             self.send_privmsg(
                                 c, e.target, f"New allow list for {chan.name}: {current}")
-                    case "deny":
+                    case ("deny"|"del"|"remove"):
                         if subargs is not None:
                             for domain in subargs.split(" "):
                                 while domain in chan.allow_list:

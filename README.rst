@@ -56,6 +56,8 @@ The bot offers a number of configuation commands:
 | !links reply       | How to reply to users when their messages are deleted. Put ``__user__`` or ``@__user__`` in the reply message to specify where the user is mentioned; otherwise a user mention will be prefixed to the beginning of the message.                                 | ``@__user__, please ask for permission before posting a link.`` | Any string                                                |
 +--------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------+-----------------------------------------------------------+
 
+The ``allow`` command and ``deny`` command can also be called as ``add`` and ``remove``/``del`` respectively.
+
 Using the bot
 ^^^^^^^^^^^^^
 

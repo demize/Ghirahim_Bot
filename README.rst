@@ -58,6 +58,15 @@ The bot offers a number of configuation commands:
 
 The ``allow`` command and ``deny`` command can also be called as ``add`` and ``remove``/``del`` respectively.
 
+Advanced URL matching
+^^^^^^^^^^^^^^^^^^^^^
+
+The bot has support for two additional features when matching URLs: wildcards and regexes.
+
+You can provide a wildcard domain in the format ``*.example.org`` and it will match any subdomains of that domain. Note that this will truly match *any* subdomain, i.e. ``a.b.example.org`` and ``a.example.org`` will both match.
+
+You can also provide a regex to match on. Note that there is a tight timeout on regex execution, and the bot will remove any regexes where the timeout expires (with a message in chat advising you of it). To add a regex, use the format ``/regex/``. 
+
 Using the bot
 ^^^^^^^^^^^^^
 

@@ -171,7 +171,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                 role = new
         return role
 
-    def extract_urls(self, message: str, slash: bool, subdomains: bool, allow_list: list) -> set:
+    def extract_urls(self, message: str, slash: bool, subdomains: bool, allow_list: list, chan: str) -> set:
         """Finds the all domains in a given message.
 
         Args:
@@ -184,10 +184,21 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         urls = self.extractor.find_urls(message)
         domains = set()
         for url in urls:
+            allowed = False
+            for regex in (item for item in allow_list if (item[0] == '/' and item[-1] == '/')):
+                regex = regex[1:-1]
+                search = re.compile(regex)
+                try:
+                    if search.findall(url, timeout=0.1):
+                        allowed = True
+                except TimeoutError:
+                    chan_ob = self.db.getChannel(chan)
+                    chan_ob.allow_list.remove(regex)
+                    self.db.setChannel(chan_ob)
+                    self.send_privmsg(self.connection, chan, f"Timeout while parsing regex. Removed {regex} from allowed list.")
             if ((slash) and "/" in message) or (not slash):
                 if self.urlregex.match(url) is None:
                     url = "//" + url
-                allowed = False
                 domain = urllib.parse.urlparse(url).netloc
                 for wildcard in (item for item in allow_list if item[0] == '*'):
                     if wildcard[2:] in domain:

@@ -8,7 +8,7 @@ import irc.connection
 import logging
 import logging.handlers
 import numpy
-import re
+import regex as re
 import ssl
 import sys
 from urlextract import URLExtract
@@ -49,6 +49,10 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         irc.bot.SingleServerIRCBot.__init__(self, [(server, port, self.password)],
                                             self.username, self.username, connect_factory=factory)
 
+        # Schedule a check to see if we're connected yet
+        self.ghirahim_connected = False
+        self.reactor.scheduler.execute_after(delay=datetime.timedelta(seconds=10), func=self.check_connection)
+
         # Schedule twice daily updates of the TLD list
         self.connection.reactor.scheduler.execute_every(
             period=datetime.timedelta(hours=12), func=self.extractor.update)
@@ -67,7 +71,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
 
         # Each file needs its own handler. We'll limit each file to 100MB with two backups.
         priv_handler = logging.handlers.RotatingFileHandler(
-            f'{config["ghirahim"]["log"]["logdir"]}/privnotice.log', maxBytes=1024 * 1024 * 100, backupCount=2, encoding='utf-8')
+            f'{config["ghirahim"]["log"]["logdir"]}/ghirahim.log', maxBytes=1024 * 1024 * 100, backupCount=2, encoding='utf-8')
         pub_handler = logging.handlers.RotatingFileHandler(
             f'{config["ghirahim"]["log"]["logdir"]}/pubnotice.log', maxBytes=1024 * 1024 * 100, backupCount=2, encoding='utf-8')
 
@@ -90,6 +94,11 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             self.pub_logger.addHandler(stdhandler)
             self.priv_logger.addHandler(stdhandler)
 
+    def check_connection(self):
+        if not self.ghirahim_connected:
+            self.priv_logger.error("Could not connect after 10 seconds. Exiting.")
+            exit(1)
+
     def send_privmsg(self, c, target: str, message: str):
         if not self.db.checkChannelCooldown(target[1:]):
             c.privmsg(target, message)
@@ -107,12 +116,12 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
 
     def on_welcome(self, c, e):
         print("Connected.")
+        self.ghirahim_connected = True
         # The tags cap is necessary so we can get information about messages, including user role and message ID.
         c.cap('REQ', ':twitch.tv/tags')
         c.cap('REQ', ':twitch.tv/commands')
         # Join the bot's own channel
         c.join('#' + self.username)
-        c.join("#nightbot")
         # Join every other channel
         c.reactor.scheduler.execute_after(
             delay=datetime.timedelta(seconds=5), func=self.check_channels)
@@ -178,13 +187,19 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             if ((slash) and "/" in message) or (not slash):
                 if self.urlregex.match(url) is None:
                     url = "//" + url
+                allowed = False
                 domain = urllib.parse.urlparse(url).netloc
+                for wildcard in (item for item in allow_list if item[0] == '*'):
+                    if wildcard[2:] in domain:
+                        allowed = True
                 if subdomains:
-                    if not any(item in domain for item in allow_list):
-                        domains.add(domain)
+                    if any(item in domain for item in allow_list):
+                        allowed = True
                 else:
-                    if domain not in allow_list:
-                        domains.add(domain)
+                    if domain in allow_list:
+                        allowed = True
+                if not allowed:
+                    domains.add(domain)
         return domains
 
     def pubmsg_ownchannel(self, c, e):

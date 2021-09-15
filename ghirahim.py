@@ -356,7 +356,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                                 for tag in e.tags if tag["key"] == "display-name")
             msg_id = next(tag["value"] for tag in e.tags if tag["key"] == "id")
             domains = self.extract_urls(
-                " ".join(e.arguments), chan.slash, chan.subdomains, chan.allow_list)
+                " ".join(e.arguments), chan.slash, chan.subdomains, chan.allow_list, chan)
             # Delete the message if it has any non-allowed URL in it
             if domains:
                 self.send_privmsg(c, e.target, f'/delete {msg_id}')

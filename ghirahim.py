@@ -51,7 +51,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
 
         # Schedule a check to see if we're connected yet
         self.ghirahim_connected = False
-        self.reactor.scheduler.execute_after(delay=datetime.timedelta(seconds=10), func=self.check_connection)
+        self.reactor.scheduler.execute_after(
+            delay=datetime.timedelta(seconds=10), func=self.check_connection)
 
         # Schedule twice daily updates of the TLD list
         self.connection.reactor.scheduler.execute_every(
@@ -96,7 +97,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
 
     def check_connection(self):
         if not self.ghirahim_connected:
-            self.priv_logger.error("Could not connect after 10 seconds. Exiting.")
+            self.priv_logger.error(
+                "Could not connect after 10 seconds. Exiting.")
             exit(1)
 
     def send_privmsg(self, c, target: str, message: str):
@@ -195,7 +197,8 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                     chan_ob = self.db.getChannel(chan)
                     chan_ob.allow_list.remove(regex)
                     self.db.setChannel(chan_ob)
-                    self.send_privmsg(self.connection, chan, f"Timeout while parsing regex. Removed {regex} from allowed list.")
+                    self.send_privmsg(
+                        self.connection, chan, f"Timeout while parsing regex. Removed {regex} from allowed list.")
             if ((slash) and "/" in message) or (not slash):
                 if self.urlregex.match(url) is None:
                     url = "//" + url
@@ -249,115 +252,86 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
 
     def chat_command(self, c, e, chan: Channel):
         """Parse chat commands."""
-        earguments = " ".join(e.arguments)
-        # All commands need at least two parts, the command and the args
-        if len(earguments.split(" ")) < 2:
-            return
-        command = earguments.split(" ", 1)[0]
-        args = earguments.split(" ", 1)[1]
-        match command.lower():
-            # Permit takes only one user at once
-            case "!permit":
-                user = args.split(" ")[0]
+        joined_args = " ".join(e.arguments)
+        match joined_args.casefold().split(" "):
+            case["!permit", user]:
                 if user[0] == "@":
                     user = user[1:]
                 self.db.issuePermit(chan, user)
                 self.send_privmsg(
                     c, e.target, f'{user} may post any link for the next 5 minutes.')
-            case "!links":
-                # List only needs one part, but the others need at least two parts, the subcommand and its arguments
-                if len(args.split(" ")) < 2:
-                    subcommand = args
-                    subargs = None
+            case["!links", ("allow" | "add"), *domains] if len(domains) > 0:
+                for domain in domains:
+                    if domain not in chan.allow_list:
+                        chan.allow_list.append(domain)
+                self.db.setChannel(chan)
+                current = ", ".join(chan.allow_list)
+                self.send_privmsg(
+                    c, e.target, f"New allow list for {chan.name}: {current}")
+            case["!links", ("deny" | "del" | "remove"), *domains] if len(domains) > 0:
+                for domain in domains:
+                    if domain in chan.allow_list:
+                        chan.allow_list.remove(domain)
+                self.db.setChannel(chan)
+                current = ", ".join(chan.allow_list)
+                self.send_privmsg(
+                    c, e.target, f"New allow list for {chan.name}: {current}")
+            case["!links", "list"]:
+                current = ", ".join(chan.allow_list)
+                self.send_privmsg(
+                    c, e.target, f"Allow list for {chan.name}: {current}")
+            case["!links", "slash", opt] if opt in ["true", "yes"]:
+                chan.slash = True
+                self.db.setChannel(chan)
+                self.send_privmsg(
+                    c, e.target, f"Slashes now required in {chan.name}")
+            case["!links", "slash", opt] if opt in ["false", "no"]:
+                chan.slash = False
+                self.db.setChannel(chan)
+                self.send_privmsg(
+                    c, e.target, f"Slashes now ignored in {chan.name}")
+            case["!links", "slash"] if chan.slash:
+                self.send_privmsg(
+                    c, e.target, f"Slashes currently required in {chan.name}")
+            case["!links", "slash"] if not chan.slash:
+                self.send_privmsg(
+                    c, e.target, f"Slashes currently NOT required in {chan.name}")
+            case["!links", "subdomains", opt] if opt in ["true", "yes"]:
+                chan.subdomains = True
+                self.db.setChannel(chan)
+                self.send_privmsg(
+                    c, e.target, f"Subdomain matching enabled in {chan.name}")
+            case["!links", "subdomains", opt] if opt in ["false", "no"]:
+                chan.subdomains = False
+                self.db.setChannel(chan)
+                self.send_privmsg(
+                    c, e.target, f"Subdomain matching disabled in {chan.name}")
+            case["!links", "subdomains"] if chan.subdomains:
+                self.send_privmsg(
+                    c, e.target, f"Subdomain matching currently enabled in {chan.name}")
+            case["!links", "subdomains"] if not chan.subdomains:
+                self.send_privmsg(
+                    c, e.target, f"Subdomain matching currently disabled in {chan.name}")
+            case["!links", "role", role] if UserRole.fromStr(role) is not None:
+                chan.userlevel = UserRole.fromStr(role)
+                self.db.setChannel(chan)
+                self.send_privmsg(
+                    c, e.target, f"Allowed userlevel set to {chan.userlevel} in {chan.name}")
+            case["!links", "role"]:
+                self.send_privmsg(
+                    c, e.target, f"Allowed userlevel in {chan.name} is {chan.userlevel}")
+            case["!links", "reply", *reply] if len(reply) > 0:
+                chan.reply = " ".join(joined_args.split()[2:])
+                new_reply = self.get_reply(chan, e.source.nick)
+                if new_reply is None:
+                    self.send_privmsg(c, e.target, "Replies disabled.")
                 else:
-                    subcommand = args.split(" ", 1)[0]
-                    subargs = args.split(" ", 1)[1]
-                match subcommand.lower():
-                    case ("allow"|"add"):
-                        if subargs is not None:
-                            for domain in subargs.split(" "):
-                                if domain not in chan.allow_list:
-                                    chan.allow_list.append(domain)
-                            self.db.setChannel(chan)
-                            current = ", ".join(chan.allow_list)
-                            self.send_privmsg(
-                                c, e.target, f"New allow list for {chan.name}: {current}")
-                    case ("deny"|"del"|"remove"):
-                        if subargs is not None:
-                            for domain in subargs.split(" "):
-                                while domain in chan.allow_list:
-                                    chan.allow_list.remove(domain)
-                            self.db.setChannel(chan)
-                            current = ", ".join(chan.allow_list)
-                            self.send_privmsg(
-                                c, e.target, f"New allow list for {chan.name}: {current}")
-                    case "list":
-                        current = ", ".join(chan.allow_list)
-                        self.send_privmsg(
-                            c, e.target, f"Current allow list for {chan.name}: {current}")
-                    case "slash":
-                        if subargs is not None:
-                            if subargs.strip() in ["true", "yes"]:
-                                chan.slash = True
-                                self.db.setChannel(chan)
-                                self.send_privmsg(
-                                    c, e.target, f"Slashes now required in {chan.name}")
-                            elif subargs.strip() in ["false", "no"]:
-                                chan.slash = True
-                                self.db.setChannel(chan)
-                                self.send_privmsg(
-                                    c, e.target, f"Slashes now ignored in {chan.name}")
-                        elif chan.slash:
-                            self.send_privmsg(
-                                    c, e.target, f"Slashes currently required in {chan.name}")
-                        else:
-                            self.send_privmsg(
-                                    c, e.target, f"Slashes currently NOT required in {chan.name}")
-                    case "subdomains":
-                        if subargs is not None:
-                            if subargs.strip() in ["true", "yes"]:
-                                chan.subdomains = True
-                                self.db.setChannel(chan)
-                                self.send_privmsg(
-                                    c, e.target, f"Subdomain matching enabled in {chan.name}")
-                            elif subargs.strip() in ["false", "no"]:
-                                chan.subdomains = True
-                                self.db.setChannel(chan)
-                                self.send_privmsg(
-                                    c, e.target, f"Subdomain matching disabled in {chan.name}")
-                        elif chan.subdomains:
-                            self.send_privmsg(
-                                    c, e.target, f"Subdomain matching currently enabled in {chan.name}")
-                        else:
-                            self.send_privmsg(
-                                    c, e.target, f"Subdomain matching currently disabled in {chan.name}")
-                    case "role":
-                        if subargs is not None:
-                            role = UserRole.fromStr(subargs.strip())
-                            if role is not None:
-                                chan.userlevel = role
-                                self.db.setChannel(chan)
-                                self.send_privmsg(
-                                    c, e.target, f"Allowed userlevel set to {role} in {chan.name}")
-                            else:
-                                self.send_privmsg(c, e.target, "Invalid role specified!")
-                        else:
-                            self.send_privmsg(
-                                    c, e.target, f"Allowed userlevel in {chan.name} is {chan.userlevel}")
-                    case "reply":
-                        if subargs is not None:
-                            if not "__user__" in subargs:
-                                subargs = "__user__, " + subargs
-                            chan.reply = subargs
-                            new_reply = self.get_reply(chan, e.source.nick)
-                            if new_reply is None:
-                                self.send_privmsg(c, e.target, "Replies disabled.")
-                            else:
-                                self.send_privmsg(
-                                    c, e.target, f'New reply will be: "{new_reply}"')
-                                self.db.setChannel(chan)
-                        else:
-                            self.send_privmsg(c, e.target, f"Current reply in {chan.name}: {self.get_reply(chan, e.source.nick)}")
+                    self.send_privmsg(
+                        c, e.target, f'New reply will be: "{new_reply}"')
+                self.db.setChannel(chan)
+            case["!links", "reply"]:
+                self.send_privmsg(
+                    c, e.target, f"Current reply in {chan.name}: {self.get_reply(chan, e.source.nick)}")
 
     def pubmsg_otherchannel(self, c, e):
         # Check if we're supposed to be in the channel and leave if not

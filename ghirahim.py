@@ -352,6 +352,12 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             case["!links", "reply"]:
                 self.send_privmsg(
                     c, e.target, f"Current reply in {chan.name}: {self.get_reply(chan, e.source.nick)}")
+            case["!links", "test", *test_message] if len(test_message) > 0:
+                domains = self.extract_urls(" ".join(joined_args.split()[2:]), chan)
+                if len(domains) > 0:
+                    self.send_privmsg(c, e.target, f"Would have deleted message for the following domains: {domains}")
+                else:
+                    self.send_privmsg(c, e.target, "Message would not have been deleted")
 
     def pubmsg_otherchannel(self, c, e):
         # Check if we're supposed to be in the channel and leave if not

@@ -61,6 +61,8 @@ The bot offers a number of configuation commands:
 
 The ``allow`` command and ``deny`` command can also be called as ``add`` and ``remove``/``del`` respectively.
 
+If you want to test your channel settings, you can use the ``!links test`` command. Any text following ``!links test`` will be parsed per your channel settings, and the bot will reply saying whether it would have deleted the message or not.
+
 Advanced URL matching
 ^^^^^^^^^^^^^^^^^^^^^
 

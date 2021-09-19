@@ -10,6 +10,7 @@ Sample channel:
 {
     "name": "demize95",
     "slash": true,
+    "dot": false,
     "subdomains": true,
     "userlevel": UserRole.VIP,
     "reply": "default",
@@ -75,11 +76,12 @@ class UserRole(Enum):
 
 
 class Channel():
-    def __init__(self, name: str, slash: bool, subdomains: bool, userlevel: UserRole, reply: str, allow_list: list):
+    def __init__(self, name: str, slash: bool, dot: bool, subdomains: bool, userlevel: UserRole, reply: str, allow_list: list):
         """Initializes a channel with the given options.
         """
         self.name = name
         self.slash = slash
+        self.dot = dot
         self.subdomains = subdomains
         self.userlevel = userlevel
         self.reply = reply
@@ -99,6 +101,7 @@ class Channel():
         """
         return cls(name,
                    slash=True,
+                   dot=True,
                    subdomains=True,
                    userlevel=UserRole.VIP,
                    reply="default",
@@ -117,6 +120,7 @@ class Channel():
 
         return cls(fromDict["name"],
                    fromDict["slash"],
+                   fromDict["dot"],
                    fromDict["subdomains"],
                    UserRole.fromStr(fromDict["userlevel"]),
                    fromDict["reply"],
@@ -128,6 +132,7 @@ class Channel():
         return {
             "name": self.name,
             "slash": self.slash,
+            "dot": self.dot,
             "subdomains": self.subdomains,
             "userlevel": str(self.userlevel),
             "reply": self.reply,
@@ -148,21 +153,23 @@ class GhirahimDB:
 
     def _getChannelRedis(self, name: str) -> Channel | None:
         redisName = "channel:" + name
-        if self.redis.exists(redisName + ":config", redisName + ":allowlist") < 2:
+        configName = redisName + ":config"
+        if self.redis.exists(configName, redisName + ":allowlist") < 2:
             return None
-        slash = self.redis.hget(redisName + ":config", "slash") == b"True"
+        slash = self.redis.hget(configName, "slash") == b"True"
+        dot = self.redis.hget(configName, "dot") == b"True"
         subdomains = self.redis.hget(
-            redisName + ":config", "subdomains") == b"True"
+            configName, "subdomains") == b"True"
         userlevel = UserRole.fromStr(
-            str(self.redis.hget(redisName + ":config", "userlevel"), 'utf-8').upper())
-        reply = str(self.redis.hget(redisName + ":config", "reply"), 'utf-8')
+            str(self.redis.hget(configName, "userlevel"), 'utf-8').upper())
+        reply = str(self.redis.hget(configName, "reply"), 'utf-8')
         allow_list = list()
         for entry in self.redis.smembers(redisName + ":allowlist"):
             if isinstance(entry, bytes):
                 entry = str(entry, 'utf-8')
             allow_list.append(entry)
 
-        return Channel(name=name, slash=slash, subdomains=subdomains, userlevel=userlevel, reply=reply, allow_list=allow_list)
+        return Channel(name=name, slash=slash, dot=dot, subdomains=subdomains, userlevel=userlevel, reply=reply, allow_list=allow_list)
 
     def _getChannelMongo(self, name: str) -> Channel | None:
         chan = self.mongo.get_collection("channels").find_one({"name": name})
@@ -185,15 +192,17 @@ class GhirahimDB:
         roleStr = str(channel.userlevel)
 
         redisName = "channel:" + channel.name
-        self.redis.hset(redisName + ":config", "name", channel.name)
-        self.redis.hset(redisName + ":config", "slash", slashStr)
-        self.redis.hset(redisName + ":config", "subdomains", slashStr)
-        self.redis.hset(redisName + ":config", "userlevel", roleStr)
-        self.redis.hset(redisName + ":config", "reply", channel.reply)
+        configName = redisName + ":config"
+        self.redis.hset(configName, "name", channel.name)
+        self.redis.hset(configName, "slash", slashStr)
+        self.redis.hset(configName, "dot", slashStr)
+        self.redis.hset(configName, "subdomains", slashStr)
+        self.redis.hset(configName, "userlevel", roleStr)
+        self.redis.hset(configName, "reply", channel.reply)
         self.redis.delete(redisName + ":allowlist")
         for domain in channel.allow_list:
             self.redis.sadd(redisName + ":allowlist", domain)
-        self.redis.expire(redisName + ":config", 1800)
+        self.redis.expire(configName, 1800)
         self.redis.expire(redisName + ":allowlist", 1800)
 
     def _setChannelMongo(self, channel: Channel):

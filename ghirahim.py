@@ -24,11 +24,11 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         # Load the config
         with open('ghirahim.yaml', 'r') as f:
             config = yaml.load(f, Loader=yaml.BaseLoader)
-            self.username = config["ghirahim"]["username"]
-            self.password = config["ghirahim"]["password"]
-            # Set up the DB
-            self.db = GhirahimDB(config["mongo"]["connect_string"],
-                                 config["redis"]["host"], config["redis"]["port"], config["redis"]["db"])
+        self.username = config["ghirahim"]["username"]
+        self.password = config["ghirahim"]["password"]
+        # Set up the DB
+        self.db = GhirahimDB(config["mongo"]["connect_string"],
+                                config["redis"]["host"], config["redis"]["port"], config["redis"]["db"])
 
         # Load the URLExtract engine and tell it to use @ as a left stop char
         self.extractor = URLExtract()
@@ -173,7 +173,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                 role = new
         return role
 
-    def extract_urls(self, message: str, slash: bool, subdomains: bool, allow_list: list, chan: str) -> set:
+    def extract_urls(self, message: str, chan: Channel) -> set:
         """Finds the all domains in a given message.
 
         Args:
@@ -182,6 +182,11 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
         Returns:
             set: The set containing all the extracted domains.
         """
+
+        slash = chan.slash
+        dot = chan.dot
+        subdomains = chan.subdomains
+        allow_list = chan.allow_list
 
         urls = self.extractor.find_urls(message)
         domains = set()
@@ -194,12 +199,11 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                     if search.findall(url, timeout=0.1):
                         allowed = True
                 except TimeoutError:
-                    chan_ob = self.db.getChannel(chan)
-                    chan_ob.allow_list.remove(regex)
-                    self.db.setChannel(chan_ob)
+                    chan.allow_list.remove(regex)
+                    self.db.setChannel(chan)
                     self.send_privmsg(
-                        self.connection, chan, f"Timeout while parsing regex. Removed {regex} from allowed list.")
-            if ((slash) and "/" in message) or (not slash):
+                        self.connection, '#' + chan.name, f"Timeout while parsing regex. Removed {regex} from allowed list.")
+            if (slash and ("/" in message)) or (dot and (url.count(".") > 1)) or (not slash):
                 if self.urlregex.match(url) is None:
                     url = "//" + url
                 domain = urllib.parse.urlparse(url).netloc
@@ -284,18 +288,34 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
                 chan.slash = True
                 self.db.setChannel(chan)
                 self.send_privmsg(
-                    c, e.target, f"Slashes now required in {chan.name}")
+                    c, e.target, f"Slash matching enabled in {chan.name}")
             case["!links", "slash", opt] if opt in ["false", "no"]:
                 chan.slash = False
                 self.db.setChannel(chan)
                 self.send_privmsg(
-                    c, e.target, f"Slashes now ignored in {chan.name}")
+                    c, e.target, f"Slash matching disabled in {chan.name}")
             case["!links", "slash"] if chan.slash:
                 self.send_privmsg(
-                    c, e.target, f"Slashes currently required in {chan.name}")
+                    c, e.target, f"Slash matching currently enabled in {chan.name}")
             case["!links", "slash"] if not chan.slash:
                 self.send_privmsg(
-                    c, e.target, f"Slashes currently NOT required in {chan.name}")
+                    c, e.target, f"Slash matching currently disabled in {chan.name}")
+            case["!links", "dot", opt] if opt in ["true", "yes"]:
+                chan.dot = True
+                self.db.setChannel(chan)
+                self.send_privmsg(
+                    c, e.target, f"Dot matching enabled in {chan.name}")
+            case["!links", "dot", opt] if opt in ["false", "no"]:
+                chan.dot = False
+                self.db.setChannel(chan)
+                self.send_privmsg(
+                    c, e.target, f"Dot matching disabled in {chan.name}")
+            case["!links", "dot"] if chan.dot:
+                self.send_privmsg(
+                    c, e.target, f"Dot matching currently enabled in {chan.name}")
+            case["!links", "dot"] if not chan.dot:
+                self.send_privmsg(
+                    c, e.target, f"Dot matching currently disabled in {chan.name}")
             case["!links", "subdomains", opt] if opt in ["true", "yes"]:
                 chan.subdomains = True
                 self.db.setChannel(chan)
@@ -355,8 +375,7 @@ class GhirahimBot(irc.bot.SingleServerIRCBot):
             display_name = next(tag["value"]
                                 for tag in e.tags if tag["key"] == "display-name")
             msg_id = next(tag["value"] for tag in e.tags if tag["key"] == "id")
-            domains = self.extract_urls(
-                " ".join(e.arguments), chan.slash, chan.subdomains, chan.allow_list, chan)
+            domains = self.extract_urls(" ".join(e.arguments), chan)
             # Delete the message if it has any non-allowed URL in it
             if domains:
                 self.send_privmsg(c, e.target, f'/delete {msg_id}')
